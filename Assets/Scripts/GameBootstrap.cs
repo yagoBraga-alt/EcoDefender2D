@@ -1,4 +1,5 @@
 using UnityEngine;
+using DG.Tweening;
 
 // Builds the ENTIRE EcoDefender game scene from code at runtime, with a flat,
 // high-contrast "neo-brutalist" look (bold colours, thick black outlines).
@@ -6,6 +7,9 @@ using UnityEngine;
 [DefaultExecutionOrder(-100)]
 public class GameBootstrap : MonoBehaviour
 {
+    // Exposed so ToxicStain and other runtime spawns can find the ground surface.
+    public static float GroundY { get; private set; }
+
     [Header("Layout")]
     public float groundY = -4.5f;
     public float playerY = -3.6f;
@@ -13,8 +17,8 @@ public class GameBootstrap : MonoBehaviour
     public float playAreaMaxX =  8f;
 
     [Header("Tuning")]
-    public float playerSpeed = 9f;
-    public float trashSpawnY = 8f;     // above the visible top → trash "falls in"
+    public float playerSpeed = 13f;
+    public float trashSpawnY = 9.5f;   // bem acima do topo visível (~6) → cai de cima, nunca surge no meio
 
     // Sorting layers (back → front)
     const int SKY = -20, SUN = -15, BUILD_OUT = -13, BUILD = -12, WIN = -11,
@@ -28,6 +32,10 @@ public class GameBootstrap : MonoBehaviour
 
     void Awake()
     {
+        DOTween.Init();                 // assinatura estável entre versões
+        DOTween.useSafeMode = true;     // ignora tweens em alvos destruídos (restart de cena)
+        GroundY = groundY;
+
         BuildCamera();
         BuildBackground();
         BuildGround();
@@ -52,6 +60,10 @@ public class GameBootstrap : MonoBehaviour
         cam.transform.position = new Vector3(0, 0, -10);
         cam.clearFlags = CameraClearFlags.SolidColor;
         cam.backgroundColor = SkyCol;
+
+        // Code-driven camera feel (shake / zoom-punch / idle sway)
+        if (cam.GetComponent<CameraRig>() == null)
+            cam.gameObject.AddComponent<CameraRig>();
     }
 
     // ── Background ──────────────────────────────────────────────────────────────
@@ -62,9 +74,11 @@ public class GameBootstrap : MonoBehaviour
         var sky = Sprite(null, "Sky", GameAssets.Square, SkyCol, new Vector3(0, 0, 0), SKY);
         sky.transform.localScale = new Vector3(28, 14, 1);
 
-        // Sun (Circle already has a black outline)
-        Sprite(null, "Sun", GameAssets.Circle, new Color(1f, 0.85f, 0.2f),
-            new Vector3(-7.3f, 4.3f, 0), SUN).transform.localScale = Vector3.one * 1.8f;
+        // Sun (Circle already has a black outline) — gently breathes
+        var sun = Sprite(null, "Sun", GameAssets.Circle, new Color(1f, 0.85f, 0.2f),
+            new Vector3(-7.3f, 4.3f, 0), SUN);
+        sun.transform.localScale = Vector3.one * 1.8f;
+        sun.AddComponent<Pulse>().amount = 0.05f;
 
         // Skyline — flat blocks with thick black outline + bright windows
         float[] bx = { -8.5f, -6f, -3.5f, -1f, 1.5f, 4f, 6.5f, 8.5f };
@@ -79,9 +93,12 @@ public class GameBootstrap : MonoBehaviour
             Sprite(null, "Building", GameAssets.Square, buildCol, pos, BUILD)
                 .transform.localScale = new Vector3(2.1f, bh[i], 1);
             for (float wy = 1; wy < bh[i] - 0.5f; wy += 1.2f)
-                Sprite(null, "Win", GameAssets.Square, new Color(1f, 0.92f, 0.5f),
-                    new Vector3(bx[i], groundY + wy - 0.5f, 0), WIN)
-                    .transform.localScale = new Vector3(1.3f, 0.3f, 1);
+            {
+                var win = Sprite(null, "Win", GameAssets.Square, new Color(1f, 0.92f, 0.5f),
+                    new Vector3(bx[i], groundY + wy - 0.5f, 0), WIN);
+                win.transform.localScale = new Vector3(1.3f, 0.3f, 1);
+                win.AddComponent<Twinkle>();   // softly flickering city lights
+            }
         }
 
         MakeCloud(new Vector3(-3.5f, 3.6f, 0), 1f);
@@ -91,10 +108,17 @@ public class GameBootstrap : MonoBehaviour
 
     void MakeCloud(Vector3 pos, float scale)
     {
+        // Parent the 3 puffs so the whole cloud can drift as one unit.
+        var cloud = new GameObject("Cloud");
+        cloud.transform.position = pos;
         var c = Color.white;
-        Sprite(null, "Cloud", GameAssets.Circle, c, pos, CLOUDS).transform.localScale = Vector3.one * 1.5f * scale;
-        Sprite(null, "Cloud", GameAssets.Circle, c, pos + Vector3.right * 0.9f * scale, CLOUDS).transform.localScale = Vector3.one * 1.1f * scale;
-        Sprite(null, "Cloud", GameAssets.Circle, c, pos + Vector3.left * 0.9f * scale, CLOUDS).transform.localScale = Vector3.one * 1.1f * scale;
+        Sprite(cloud.transform, "P", GameAssets.Circle, c, Vector3.zero, CLOUDS).transform.localScale = Vector3.one * 1.5f * scale;
+        Sprite(cloud.transform, "P", GameAssets.Circle, c, Vector3.right * 0.9f * scale, CLOUDS).transform.localScale = Vector3.one * 1.1f * scale;
+        Sprite(cloud.transform, "P", GameAssets.Circle, c, Vector3.left * 0.9f * scale, CLOUDS).transform.localScale = Vector3.one * 1.1f * scale;
+
+        var drift = cloud.AddComponent<Drift>();
+        drift.speed = Random.Range(0.18f, 0.45f);
+        drift.wrapMin = -13f; drift.wrapMax = 13f;
     }
 
     // ── Ground ──────────────────────────────────────────────────────────────
@@ -124,7 +148,7 @@ public class GameBootstrap : MonoBehaviour
     {
         var types = new[]
         {
-            TrashItem.TrashType.Organic,
+            TrashItem.TrashType.Glass,
             TrashItem.TrashType.Plastic,
             TrashItem.TrashType.Paper,
             TrashItem.TrashType.Metal,

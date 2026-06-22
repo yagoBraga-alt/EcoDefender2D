@@ -1,5 +1,6 @@
 {
   "dependencies": {
+    "com.madstrawberry.dotween": "https://github.com/FrankPIE/DoTween-UPM.git",
     "com.unity.cinemachine": "3.1.6",
     "com.unity.connect.share": "4.2.4",
     "com.unity.feature.2d": "2.0.2",

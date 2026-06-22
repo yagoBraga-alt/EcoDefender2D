@@ -9,8 +9,10 @@ public class AudioManager : MonoBehaviour
 
     private AudioSource sfx;
     private AudioSource music;
+    private AudioSource accent;   // pitched channel for combo blips
 
     private AudioClip collectClip, goodClip, badClip, stickClip, placeClip;
+    private AudioClip comboClip, waveClip, victoryClip, gameOverClip, powerClip;
 
     const int SampleRate = 44100;
     enum Wave { Sine, Square, Triangle, Noise }
@@ -28,6 +30,10 @@ public class AudioManager : MonoBehaviour
         music.playOnAwake = false;
         music.loop = true;
         music.volume = 0.12f;
+
+        accent = gameObject.AddComponent<AudioSource>();
+        accent.playOnAwake = false;
+        accent.volume = 0.45f;
 
         BuildClips();
     }
@@ -50,6 +56,16 @@ public class AudioManager : MonoBehaviour
         stickClip = Tone("stick", new[] { (110f, 0.28f) }, Wave.Noise, 0.5f);
         // place collector: soft mid blip
         placeClip = Tone("place", new[] { (440f, 0.06f), (660f, 0.06f) }, Wave.Sine, 0.4f);
+        // combo: single bright blip (pitch-shifted up per combo on the accent channel)
+        comboClip = Tone("combo", new[] { (660f, 0.06f) }, Wave.Triangle, 0.5f);
+        // wave start: short rising fanfare
+        waveClip = Tone("wave", new[] { (392f, 0.10f), (523f, 0.14f) }, Wave.Triangle, 0.5f);
+        // victory: rising major arpeggio
+        victoryClip = Tone("victory", new[] { (523f, 0.12f), (659f, 0.12f), (784f, 0.12f), (1047f, 0.30f) }, Wave.Triangle, 0.55f);
+        // game over: descending sad line
+        gameOverClip = Tone("gameover", new[] { (440f, 0.16f), (370f, 0.16f), (294f, 0.34f) }, Wave.Square, 0.45f);
+        // power-up: bright rising sparkle
+        powerClip = Tone("power", new[] { (523f, 0.05f), (784f, 0.05f), (1047f, 0.12f) }, Wave.Sine, 0.5f);
     }
 
     // ── Public API ─────────────────────────────────────────────────────────────
@@ -59,6 +75,17 @@ public class AudioManager : MonoBehaviour
     public void PlayDeliverBad()  => sfx.PlayOneShot(badClip);
     public void PlayStick()       => sfx.PlayOneShot(stickClip);
     public void PlayPlace()       => sfx.PlayOneShot(placeClip);
+    public void PlayWaveStart()   => sfx.PlayOneShot(waveClip);
+    public void PlayPowerUp()     => sfx.PlayOneShot(powerClip);
+    public void PlayVictory()     => sfx.PlayOneShot(victoryClip);
+    public void PlayGameOver()    => sfx.PlayOneShot(gameOverClip);
+
+    // Combo blip rises in pitch as the streak grows (juicy ascending feedback).
+    public void PlayCombo(int combo)
+    {
+        accent.pitch = 1f + Mathf.Min(combo, 14) * 0.05f;
+        accent.PlayOneShot(comboClip);
+    }
 
     // ── Procedural generation ─────────────────────────────────────────────────
 

@@ -6,10 +6,22 @@ using UnityEngine;
 // in GameBootstrap.
 public static class GameAssets
 {
-    private static Sprite _square, _circle;
+    private static Sprite _square, _circle, _dot, _vignette;
+
+    // Limpa o cache no início de CADA Play. Sem isso, com "Domain Reload"
+    // desligado (Unity 6), os sprites guardados aqui sobrevivem entre execuções
+    // apontando para texturas já destruídas → o cenário não renderiza ("tela
+    // branca" mostrando só a HUD). Roda antes de qualquer Awake.
+    [RuntimeInitializeOnLoadMethod(RuntimeInitializeLoadType.SubsystemRegistration)]
+    static void ResetStaticCache()
+    {
+        _square = null; _circle = null; _dot = null; _vignette = null;
+    }
 
     public static Sprite Square => _square ??= MakeSquare(32);
     public static Sprite Circle => _circle ??= MakeCircle(64);
+    public static Sprite Dot    => _dot ??= MakeFilledCircle(24);          // particle bit
+    public static Sprite Vignette => _vignette ??= MakeVignette(256);      // screen edges
 
     // ── Primitives ────────────────────────────────────────────────────────────
 
@@ -33,6 +45,38 @@ public static class GameAssets
                 float d = Vector2.Distance(new Vector2(x + .5f, y + .5f), c);
                 if (d <= r - 1)
                     px[y * size + x] = (d >= r - 1 - ring) ? Color.black : Color.white;
+            }
+        return Bake(tex, px, size);
+    }
+
+    // Solid filled circle, no outline — used as a particle "bit".
+    public static Sprite MakeFilledCircle(int size)
+    {
+        var tex = NewTex(size);
+        var px = Fill(size * size, Color.clear);
+        float r = size / 2f;
+        Vector2 c = new Vector2(r, r);
+        for (int y = 0; y < size; y++)
+            for (int x = 0; x < size; x++)
+                if (Vector2.Distance(new Vector2(x + .5f, y + .5f), c) <= r - 1)
+                    px[y * size + x] = Color.white;
+        return Bake(tex, px, size);
+    }
+
+    // Radial darkening (transparent centre → dark corners) for a cheap vignette.
+    public static Sprite MakeVignette(int size)
+    {
+        var tex = NewTex(size);
+        tex.filterMode = FilterMode.Bilinear;   // smooth, no banding
+        var px = new Color[size * size];
+        Vector2 c = new Vector2(size / 2f, size / 2f);
+        float maxD = size * 0.5f;
+        for (int y = 0; y < size; y++)
+            for (int x = 0; x < size; x++)
+            {
+                float d = Vector2.Distance(new Vector2(x, y), c) / maxD;
+                float a = Mathf.Clamp01((d - 0.55f) / 0.45f);
+                px[y * size + x] = new Color(0f, 0f, 0f, a * a * 0.7f);
             }
         return Bake(tex, px, size);
     }
@@ -89,27 +133,38 @@ public static class GameAssets
 
     public static Sprite TrashSprite(TrashItem.TrashType type) => type switch
     {
-        TrashItem.TrashType.Organic => MakeApple(),
+        TrashItem.TrashType.Glass   => MakeGlass(),
         TrashItem.TrashType.Plastic => MakeBottle(),
         TrashItem.TrashType.Paper   => MakePaper(),
         TrashItem.TrashType.Metal   => MakeCan(),
         _ => MakeSquare(64)
     };
 
-    static Sprite MakeApple()
+    // Glass bottle: round body + long thin neck + cork, with a reflection
+    // stripe so it clearly reads as "glass" (distinct from the plastic bottle).
+    static Sprite MakeGlass()
     {
-        int s = 64; var tex = NewTex(s); var px = Fill(s * s, Color.clear);
-        Vector2 c = new Vector2(s / 2f, s / 2f - 4);
-        for (int y = 0; y < s; y++)
-            for (int x = 0; x < s; x++)
+        int w = 44, h = 64; var tex = NewTex(w, h); var px = Fill(w * h, Color.clear);
+        for (int y = 0; y < h; y++)
+            for (int x = 0; x < w; x++)
             {
-                float d = Vector2.Distance(new Vector2(x, y), c);
-                if (d <= 24) px[y * s + x] = d > 22 ? Dark : White;
+                bool body     = y >= 2  && y < 34 && x > 8  && x < 36;  // round body
+                bool shoulder = y >= 34 && y < 42 && x > 12 && x < 32;  // shoulders
+                bool neck     = y >= 42 && y < 58 && x > 17 && x < 27;  // long thin neck
+                bool cap      = y >= 58 && y < 62 && x > 16 && x < 28;  // cork / cap
+                if (body || shoulder || neck || cap)
+                {
+                    bool edge = (body     && (x <= 9  || x >= 35 || y <= 2)) ||
+                                (shoulder && (x <= 13 || x >= 31)) ||
+                                (neck     && (x <= 18 || x >= 26)) ||
+                                (cap      && (x <= 17 || x >= 27 || y >= 61));
+                    px[y * w + x] = edge ? Dark : (cap ? Grey : White);
+                }
             }
-        // stem
-        for (int y = 44; y < 56; y++)
-            for (int x = 30; x < 34; x++) px[y * s + x] = Dark;
-        return Bake(tex, px, s);
+        // vertical reflection highlight on the body (glass shine)
+        for (int y = 6; y < 32; y++)
+            if (px[y * w + 14].a > 0f) px[y * w + 14] = Grey;
+        return Bake(tex, px, w, h);
     }
 
     static Sprite MakeBottle()
