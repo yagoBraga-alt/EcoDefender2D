@@ -82,4 +82,4 @@ Ensinar a separação correta do lixo segundo o padrão brasileiro de coleta sel
 
 ## 🌐 Jogar online
 
-Build WebGL disponível em: _(adicionar o link aqui após publicar)_
+**▶️ Jogue agora no navegador:** https://yago-braga.itch.io/ecodefenders
